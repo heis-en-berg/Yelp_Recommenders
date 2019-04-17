@@ -45,20 +45,20 @@
     business_data = spark.read.json('./data_json/business.json')
     
     # Montréal Businesses
-    business_LV_dataframe = business_data.filter(business_data['city'] == 'Montréal')
-    business_LV_dataframe = business_LV_dataframe.filter(business_LV_dataframe['review_count'] > 5)
+    business_mtl_dataframe = business_data.filter(business_data['city'] == 'Montréal')
+    business_mtl_dataframe = business_mtl_dataframe.filter(business_mtl_dataframe['review_count'] > 5)
     
     
     # Montréal Restaurants
     
-    business_LV_dataframe = business_LV_dataframe.filter(business_LV_dataframe.categories.like('%Restaurants%'))
+    business_mtl_dataframe = business_mtl_dataframe.filter(business_mtl_dataframe.categories.like('%Restaurants%'))
 
     # indexing business id
     indexer = StringIndexer(inputCol="business_id", outputCol="bid")
-    business_LV_dataframe = indexer.fit(business_LV_dataframe).transform(business_LV_dataframe)
-    business_LV_dataframe = business_LV_dataframe.withColumn("bid", business_LV_dataframe["bid"].cast(IntegerType()))
+    business_mtl_dataframe = indexer.fit(business_mtl_dataframe).transform(business_mtl_dataframe)
+    business_mtl_dataframe = business_mtl_dataframe.withColumn("bid", business_mtl_dataframe["bid"].cast(IntegerType()))
     
-    restaurants_LV_dataframe = business_LV_dataframe.drop('address', 'hours', 'is_open', 'latitude', 'longitude', 'postal_code', 'state' , 'stars' , 'city')
+    restaurants_mtl_dataframe = business_mtl_dataframe.drop('address', 'hours', 'is_open', 'latitude', 'longitude', 'postal_code', 'state' , 'stars' , 'city')
     
     ########################## business categories binary df #####################
     
@@ -70,7 +70,7 @@
             new_list.append(list[i].lstrip())
         return set(new_list)
     
-    categories_RDD = restaurants_LV_dataframe.rdd.filter(lambda x: x.categories != None)
+    categories_RDD = restaurants_mtl_dataframe.rdd.filter(lambda x: x.categories != None)
     categories_RDD = categories_RDD.map(lambda x: x.categories.split(','))
     categories_RDD = categories_RDD.map(normalize_data)
     categories_set = categories_RDD.reduce(lambda x,y: x.union(y))
@@ -84,20 +84,20 @@
         output = Row(**temp_dict)
         return output
 
-    restaurants_LV_RDD = restaurants_LV_dataframe.rdd.filter(lambda x: x.categories != None)
-    restaurants_binary_categories_LV_RDD = restaurants_LV_RDD.map(lambda x: add_categories_as_columns(x, categories_set))
+    restaurants_mtl_RDD = restaurants_mtl_dataframe.rdd.filter(lambda x: x.categories != None)
+    restaurants_binary_categories_mtl_RDD = restaurants_mtl_RDD.map(lambda x: add_categories_as_columns(x, categories_set))
     
-    restaurants_binary_categories_LV_dataframe = restaurants_binary_categories_LV_RDD.toDF(sampleRatio=0.2)
-    restaurants_binary_categories_LV_dataframe = restaurants_binary_categories_LV_dataframe.drop('attributes', 'categories', 'name', 'review_count')
+    restaurants_binary_categories_mtl_dataframe = restaurants_binary_categories_mtl_RDD.toDF(sampleRatio=0.2)
+    restaurants_binary_categories_mtl_dataframe = restaurants_binary_categories_mtl_dataframe.drop('attributes', 'categories', 'name', 'review_count')
 
-    columns = restaurants_binary_categories_LV_dataframe.columns
+    columns = restaurants_binary_categories_mtl_dataframe.columns
     columns.remove('bid')
     columns = ['bid'] + columns
-    restaurants_binary_categories_LV_dataframe = restaurants_binary_categories_LV_dataframe.select(columns)
+    restaurants_binary_categories_mtl_dataframe = restaurants_binary_categories_mtl_dataframe.select(columns)
     
      # removing rows with no categories
-    restaurants_binary_categories_LV_dataframe = restaurants_binary_categories_LV_dataframe.rdd.filter(lambda x : sum(x[1:-1]) != 0).toDF()
-    restaurants_binary_categories_LV_dataframe.persist(pyspark.StorageLevel.DISK_ONLY)
+    restaurants_binary_categories_mtl_dataframe = restaurants_binary_categories_mtl_dataframe.rdd.filter(lambda x : sum(x[1:-1]) != 0).toDF()
+    restaurants_binary_categories_mtl_dataframe.persist(pyspark.StorageLevel.DISK_ONLY)
 
 
     ################################ DF and IDF of categories #######################
@@ -106,9 +106,9 @@
     
     category_idf_score = {}      
           
-    restaurant_count = restaurants_binary_categories_LV_dataframe.count()
+    restaurant_count = restaurants_binary_categories_mtl_dataframe.count()
     
-    category_idf_score = restaurants_binary_categories_LV_dataframe.groupBy().sum().collect()[0].asDict()
+    category_idf_score = restaurants_binary_categories_mtl_dataframe.groupBy().sum().collect()[0].asDict()
     
     category_idf_score.pop('sum(bid)')
     
@@ -139,12 +139,12 @@
     #reviews_data = reviews_data.withColumn("bid", reviews_data["bid"].cast(IntegerType()))
     
      # reviews data from Las Vegas
-    reviews_data = reviews_data.join(restaurants_binary_categories_LV_dataframe, ['business_id'], 'leftsemi')
-    reviews_data = reviews_data.join(restaurants_binary_categories_LV_dataframe, ['business_id'])
+    reviews_data = reviews_data.join(restaurants_binary_categories_mtl_dataframe, ['business_id'], 'leftsemi')
+    reviews_data = reviews_data.join(restaurants_binary_categories_mtl_dataframe, ['business_id'])
     reviews_data = reviews_data.select('stars', 'user_id', 'bid')
     
 
-    restaurants_binary_categories_LV_dataframe = restaurants_binary_categories_LV_dataframe.drop('business_id')
+    restaurants_binary_categories_mtl_dataframe = restaurants_binary_categories_mtl_dataframe.drop('business_id')
     
     indexer = StringIndexer(inputCol="user_id", outputCol="uid")
     reviews_data = indexer.fit(reviews_data).transform(reviews_data)
@@ -162,11 +162,11 @@
     reviews_dataframe = reviews_dataframe.join(review_count_per_user, 'uid', 'leftsemi')
     
     # Repeat : drop business with less than 5 reviews
-    restaurants_binary_categories_LV_dataframe = restaurants_binary_categories_LV_dataframe.join(reviews_dataframe, 'bid', 'leftsemi')
-    restaurants_binary_categories_LV_dataframe.persist(pyspark.StorageLevel.DISK_ONLY)
+    restaurants_binary_categories_mtl_dataframe = restaurants_binary_categories_mtl_dataframe.join(reviews_dataframe, 'bid', 'leftsemi')
+    restaurants_binary_categories_mtl_dataframe.persist(pyspark.StorageLevel.DISK_ONLY)
     
     # Repeat
-    #reviews_data = reviews_data.join(restaurants_binary_categories_LV_dataframe, ['bid'], 'leftsemi')
+    #reviews_data = reviews_data.join(restaurants_binary_categories_mtl_dataframe, ['bid'], 'leftsemi')
     
     reviews_dataframe.persist(pyspark.StorageLevel.DISK_ONLY)
     
@@ -183,10 +183,10 @@
         return (x[0], sqrt(count))
     
     
-    attributes_count_per_business = restaurants_binary_categories_LV_dataframe.rdd.map(lambda x : get_attribute_count(x)).toDF()
+    attributes_count_per_business = restaurants_binary_categories_mtl_dataframe.rdd.map(lambda x : get_attribute_count(x)).toDF()
     attributes_count_per_business = attributes_count_per_business.withColumnRenamed('_1','bid').withColumnRenamed('_2','normalized_attribute_count')
 
-    normalized_restaurants_dataframe = restaurants_binary_categories_LV_dataframe.join(attributes_count_per_business, 'bid')
+    normalized_restaurants_dataframe = restaurants_binary_categories_mtl_dataframe.join(attributes_count_per_business, 'bid')
 
     def get_normalized_row(x):
         row_dict = x.asDict()
@@ -345,7 +345,7 @@
         return output
         
     user_0_predictions = user_0_predictions.rdd.map(lambda x : get_dot_product_user_0(x, categories_set)).toDF()
-    user_0_predictions = user_0_predictions.join(business_LV_dataframe, 'bid').orderBy('prediction', ascending=False)
+    user_0_predictions = user_0_predictions.join(business_mtl_dataframe, 'bid').orderBy('prediction', ascending=False)
     user_0_predictions = user_0_predictions.select('uid', 'bid', 'name', 'prediction','review_count', 'stars','categories')
     user_0_predictions = user_0_predictions.withColumnRenamed('stars', 'business_rating')
     user_0_predictions.cache()
